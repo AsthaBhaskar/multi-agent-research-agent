@@ -353,7 +353,8 @@ if ps:
     if ps.get("feedback"):
         st.markdown('<div class="feedback-panel"><div class="panel-label green">🧐 Critic Feedback</div>',
                     unsafe_allow_html=True)
-        st.markdown(ps["feedback"])
+        st.markdown(ps["feedback"], unsafe_allow_html=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
 

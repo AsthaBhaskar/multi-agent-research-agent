@@ -10,7 +10,7 @@ Graph topology:
 """
 import re
 from langgraph.graph import StateGraph, END
-
+import re as _re
 from state import ResearchState
 from agents import build_search_agent, build_reader_agent, writer_chain, critic_chain
 
@@ -49,7 +49,7 @@ def reader_node(state: ResearchState) -> dict:
             "user",
             f"Based on the following search results about '{state['topic']}', "
             f"pick the most relevant URL and scrape it for deeper content.\n\n"
-            f"Search Results:\n{state['search_results'][:800]}"
+            f"Search Results:\n{state['search_results']}"
         )]
     })
     return {"scraped_content": _agent_output(result)}
@@ -67,17 +67,29 @@ def writer_node(state: ResearchState) -> dict:
         revision_instruction = ""
     else:
         print(f"\n[WRITER] Revising report (revision #{revision_num})...")
+        
+        areas_match = _re.search(
+            r"Areas to Improve[:\s]*(.*?)(?:One.line Verdict|$)",
+            feedback, _re.DOTALL | _re.IGNORECASE
+        )
+        areas = areas_match.group(1).strip() if areas_match else feedback
+
         revision_instruction = (
             f"IMPORTANT — This is revision #{revision_num}. "
-            f"The critic gave the following feedback on your previous draft:\n\n"
-            f"{feedback}\n\n"
-            f"Address every area-to-improve listed above. Make the report significantly better."
+            f"Address each of these specific issues from the critic:\n\n"
+            f"{areas}\n\n"
+            f"Do not just add a sentence — restructure or expand the relevant sections."
         )
+
+    scraped = state.get("scraped_content", "")
+    if scraped.startswith("Tool error") or scraped.startswith("Unknown tool"):
+        scraped = "(scraping failed — using search results only)"
 
     research_combined = (
         f"SEARCH RESULTS:\n{state['search_results']}\n\n"
-        f"DETAILED SCRAPED CONTENT:\n{state['scraped_content']}"
+        f"DETAILED SCRAPED CONTENT:\n{scraped}"   # ← use scraped, not state['scraped_content']
     )
+   
 
     report = writer_chain.invoke({
         "topic": state["topic"],
@@ -100,16 +112,17 @@ def _parse_score(feedback_text: str) -> int:
       Score: 7/10  |  **Score: 7/10**  |  Score: 7 out of 10  |  7/10
     """
     patterns = [
-        r"\*{0,2}[Ss]core\*{0,2}[:\s]+(\d+)\s*/\s*10",
-        r"\*{0,2}[Ss]core\*{0,2}[:\s]+(\d+)\s*out of\s*10",
-        r"\*{0,2}[Ss]core\*{0,2}[:\s]+(\d+)",
-        r"^(\d+)\s*/\s*10",
-        r"(\d+)\s*/\s*10",
+        r"\*{0,2}[Ss]core\*{0,2}[:\s]+([\d.]+)\s*/\s*10",
+        r"\*{0,2}[Ss]core\*{0,2}[:\s]+([\d.]+)\s*out of\s*10",
+        r"\*{0,2}[Ss]core\*{0,2}[:\s]+([\d.]+)",
+        r"^([\d.]+)\s*/\s*10",
+        r"([\d.]+)\s*/\s*10",
     ]
     for pattern in patterns:
         match = re.search(pattern, feedback_text, re.IGNORECASE | re.MULTILINE)
         if match:
-            val = int(match.group(1))
+            val = round(float(match.group(1)))
+
             if 0 <= val <= 10:
                 return val
     return 5  # neutral fallback so we don't loop forever on parse failure
@@ -133,8 +146,8 @@ def should_revise(state: ResearchState) -> str:
     max_revisions = state.get("max_revisions", 3)
     score_threshold = state.get("score_threshold", 7)
 
-    if score >= score_threshold:
-        print(f"\n[ROUTER] Score {score} >= {score_threshold} → DONE ✓")
+    if score > score_threshold:
+        print(f"\n[ROUTER] Score {score} > {score_threshold} → DONE ✓")
         return "end"
     if revision_num >= max_revisions:
         print(f"\n[ROUTER] Max revisions ({max_revisions}) reached → DONE")

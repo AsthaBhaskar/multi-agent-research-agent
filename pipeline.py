@@ -8,7 +8,7 @@ from graph import research_graph
 def run_research_pipeline(
     topic: str,
     max_revisions: int = 3,
-    score_threshold: int = 7,
+    score_threshold: int = 8,
 ) -> dict:
     initial_state = {
         "topic": topic,

@@ -72,26 +72,24 @@ def _run_tool_agent(bound_llm, user_message: str, max_steps: int = 5) -> str:
 
 
 # ── Public agent builders ─────────────────────────────────────────────────────
-def build_search_agent():
-    """Returns a callable that mimics the old agent interface."""
-    class _Agent:
-        def invoke(self, payload):
-            msg = payload["messages"][0]
-            text = msg[1] if isinstance(msg, tuple) else msg.content
-            output = _run_tool_agent(search_llm, text)
-            return {"messages": [AIMessage(content=output)]}
-    return _Agent()
+class _ToolAgent:
+    def __init__(self, bound_llm):
+        self._llm = bound_llm
 
+    def invoke(self, payload):
+        msg = payload["messages"][0]
+        text = msg[1] if isinstance(msg, tuple) else msg.content
+        output = _run_tool_agent(self._llm, text)
+        return {"messages": [AIMessage(content=output)]}
+
+_search_agent = _ToolAgent(search_llm)
+_reader_agent = _ToolAgent(reader_llm)
+
+def build_search_agent():
+    return _search_agent
 
 def build_reader_agent():
-    class _Agent:
-        def invoke(self, payload):
-            msg = payload["messages"][0]
-            text = msg[1] if isinstance(msg, tuple) else msg.content
-            output = _run_tool_agent(reader_llm, text)
-            return {"messages": [AIMessage(content=output)]}
-    return _Agent()
-
+    return _reader_agent
 
 # ── Writer Chain ──────────────────────────────────────────────────────────────
 _writer_prompt = ChatPromptTemplate.from_messages([
@@ -107,11 +105,21 @@ Research Gathered:
 
 Structure the report as:
 - Introduction
-- Key Findings (minimum 3 well-explained points)
+- Key Findings (minimum 3 points — each must include a named source inline, \
+a specific statistic or example, and at least one industry-specific detail)
+- Regulatory & Ethical Landscape (name at least one real framework, e.g. EU AI Act)
 - Conclusion
 - Sources (list all URLs found in the research)
 
-Be detailed, factual and professional."""),
+If you are uncertain about a statistic, write "reportedly" or "according to [source]" \
+rather than stating it as fact. Do not invent numbers.
+     
+CRITICAL RULES:
+- Only cite URLs that appear verbatim in the Research Gathered section above.
+- Do not invent, guess, or paraphrase URLs. If a URL is not in the research, do not include it.
+- If a claim cannot be attributed to a URL in the research, write "based on available research" — do not fabricate a source.
+- For every statistic or named claim, write the source inline, e.g. (Source: https://...)
+"""),
 ])
 
 writer_chain = _writer_prompt | llm | StrOutputParser()
@@ -119,23 +127,26 @@ writer_chain = _writer_prompt | llm | StrOutputParser()
 
 # ── Critic Chain ──────────────────────────────────────────────────────────────
 _critic_prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a sharp and constructive research critic. Be honest and specific."),
+    ("system", "You are a sharp and constructive research critic. Be honest and specific. Always respond in plain text with no HTML, no markdown bold, no special formatting — only the exact format requested."),
     ("human", """Review the research report below and evaluate it strictly.
+
+Example of the EXACT format you must use:
+---
+Score: 6/10
+Strengths:
+- Clear structure across sections.
+Areas to Improve:
+- No inline source citations in Key Findings.
+- Workforce section lacks industry-specific data.
+One-line Verdict: Solid overview but needs deeper sourcing.
+---
+
+Now review this report:
 
 Report:
 {report}
 
-Respond in this EXACT format (do not deviate):
-
-Score: X/10
-Strengths:
-- ...
-- ...
-Areas to Improve:
-- ...
-- ...
-One line verdict:
-..."""),
+Respond in the EXACT format shown above. Do not add extra sections."""),
 ])
 
 critic_chain = _critic_prompt | llm | StrOutputParser()
