@@ -2,6 +2,7 @@
 Streamlit app for the LangGraph research pipeline.
 Shows live node progress and the critic→writer feedback loop.
 """
+
 import time
 import streamlit as st
 
@@ -194,16 +195,16 @@ def render_pipeline_nodes(node_log: list, running_node: str = ""):
     )
 
     for num, key, title, desc in NODES:
-        is_done    = key in completed
-        is_active  = (key == running_node)
+        is_done = key in completed
+        is_active = (key == running_node)
         is_revised = (key == "writer" and writer_revisions > 1)
 
         if is_active:
-            card_cls, badge_cls, badge_txt = "active", "badge-run", "● RUNNING"
+            card_cls, badge_cls, badge_txt = "active", "badge-run", "&#9679; RUNNING"
         elif is_done and is_revised:
-            card_cls, badge_cls, badge_txt = "revised", "badge-loop", f"↺ ×{writer_revisions}"
+            card_cls, badge_cls, badge_txt = "revised", "badge-loop", f"&#8634; &times;{writer_revisions}"
         elif is_done:
-            card_cls, badge_cls, badge_txt = "done", "badge-done", "✓ DONE"
+            card_cls, badge_cls, badge_txt = "done", "badge-done", "&#10003; DONE"
         else:
             card_cls, badge_cls, badge_txt = "", "badge-wait", "WAITING"
 
@@ -214,27 +215,29 @@ def render_pipeline_nodes(node_log: list, running_node: str = ""):
         score_html = ""
         if key == "critic" and is_done and latest_score is not None:
             color = score_color(latest_score)
-            pct   = latest_score * 10
-            score_html = f"""
-            <div class="score-bar-wrap">
-              <div class="score-label">Latest score: {latest_score}/10</div>
-              <div class="score-bar-bg">
-                <div class="score-bar-fill" style="width:{pct}%;background:{color};"></div>
-              </div>
-            </div>"""
+            pct = latest_score * 10
+            score_html = (
+                '<div style="margin-top:0.6rem;">'
+                f'<div style="font-family:monospace;font-size:0.65rem;color:#a09890;margin-bottom:0.25rem;">Latest score: {latest_score}/10</div>'
+                f'<div style="background:rgba(255,255,255,0.06);border-radius:4px;height:6px;width:100%;display:block;overflow:hidden;">'
+                f'<div style="display:block;width:{pct}%;height:6px;min-height:6px;background:{color};border-radius:4px;"></div>'
+                '</div>'
+                '</div>'
+            )
 
-        st.markdown(f"""
-        <div class="node-card {card_cls}">
-          <div class="node-header">
-            <span class="node-num">{num}</span>
-            <span class="node-title">{title}</span>
-            <span class="node-badge {badge_cls}">{badge_txt}</span>
-          </div>
-          <div style="font-size:0.78rem;color:#605850;margin-top:0.25rem;">{desc}</div>
-          {revision_html}
-          {score_html}
-        </div>
-        """, unsafe_allow_html=True)
+        html = (
+            f'<div class="node-card {card_cls}">'
+            f'<div class="node-header">'
+            f'<span class="node-num">{num}</span>'
+            f'<span class="node-title">{title}</span>'
+            f'<span class="node-badge {badge_cls}">{badge_txt}</span>'
+            f'</div>'
+            f'<div style="font-size:0.78rem;color:#605850;margin-top:0.25rem;">{desc}</div>'
+            f'{revision_html}'
+            f'{score_html}'
+            f'</div>'
+        )
+        st.markdown(html, unsafe_allow_html=True)
 
 
 with col_right:
