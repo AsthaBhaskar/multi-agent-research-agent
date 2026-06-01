@@ -3,6 +3,13 @@ Streamlit app for the LangGraph research pipeline.
 Shows live node progress and the critic→writer feedback loop.
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
+import os
+from supabase import create_client
+
+
 import time
 import streamlit as st
 
@@ -266,7 +273,7 @@ if run_btn:
 if st.session_state.running:
 
     initial_state = {
-        "topic": st.session_state.topic_input,
+        "topic": topic,
         "search_results": "",
         "scraped_content": "",
         "report": "",
