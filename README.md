@@ -1,277 +1,278 @@
-cat > /mnt/user-data/outputs/README.md << 'READMEEOF'
-# 🔬 ResearchMind — Multi-Agent Research Pipeline
+# Multi-Agent Research Agent
 
-A LangGraph-powered multi-agent system that autonomously researches any topic, writes a structured report, and self-improves the draft through a **Critic → Writer feedback loop** until a quality score threshold is met.
-
-Built with **LangGraph**, **Mistral AI**, **Tavily**, **Streamlit**, and **Supabase**.
+A multi-agent AI research pipeline built on **LangGraph** that autonomously searches the web, scrapes sources, writes a structured report, and iteratively critiques and improves it — until it reaches a quality threshold. Features a **React frontend**, a **FastAPI backend**, and a **Supabase-powered memory layer** that short-circuits expensive web searches for previously researched topics.
 
 ---
 
-## ✨ Features
+## Features
 
-- **4 specialized agents** orchestrated as a stateful LangGraph graph
-- **Autonomous web search** via Tavily API
-- **Deep content extraction** by scraping the most relevant URL found
-- **AI-written reports** structured as Introduction / Key Findings / Conclusion / Sources
-- **Self-critique loop** — the Critic scores every draft (0–10) and loops back to the Writer with targeted feedback until the score target is met or max revisions are exhausted
-- **Supabase memory** — persistent storage of past research runs and report history
-- **React frontend** — modern web UI alongside the Streamlit interface
-- **Live Streamlit UI** with real-time node progress, score bars, and a markdown report download
-- **CLI runner** for headless / scripted usage
+- **Multi-agent pipeline** — four specialized AI agents (Search, Reader, Writer, Critic) collaborate via a shared state machine
+- **Self-improving reports** — the Critic scores each draft; low-scoring reports loop back to the Writer with targeted feedback until the bar is met or the revision cap is hit
+- **Supabase semantic cache** — similarity-matches new topics against past research to skip web search and serve polished reports in a fraction of the time
+- **React UI** — live node-by-node progress, score display, critic feedback, and downloadable reports
+- **FastAPI backend** — orchestrates the LangGraph pipeline and streams state back to the frontend
 
 ---
 
-## 🏗️ Architecture
+## System Architecture
 
+```mermaid
+flowchart TD
+    UI(["`**Frontend**
+    React UI`"])
+    API(["`**FastAPI Backend**
+    app.py`"])
+    SUPA_CHECK{"`**Supabase**
+    Similarity Check`"}
+    CACHE_HIT(["`**Load Cached Research**
+    from research_cache`"])
+    WRITER_FAST(["`**Writer Rewrite**
+    polish cached content
+    skip search + scrape`"])
+
+    subgraph PIPELINE ["  LangGraph Pipeline — graph.py  "]
+        SEARCH(["`**Search Node**
+        search_agent · Tavily API
+        titles + snippets + URLs`"])
+        READER(["`**Reader Node**
+        reader_agent · BeautifulSoup
+        scrapes 3000 chars`"])
+        WRITER(["`**Writer Node**
+        writer_chain · Mistral
+        intro · findings · conclusion`"])
+        CRITIC(["`**Critic Node**
+        critic_chain · Score 0–10
+        strengths + improvements`"])
+        REVISE{"`**should_revise()?**
+        score < threshold
+        AND revisions left?`"}
+    end
+
+    SAVE(["`**Persist to Supabase**
+    topic · report · score · timestamp`"])
+    RESULT(["`**Return to React UI**
+    report · score · feedback · revisions`"])
+
+    subgraph EXTERNAL ["  External Services  "]
+        direction LR
+        T([Tavily API])
+        M([Mistral LLM])
+        B([BeautifulSoup])
+        S([Supabase DB])
+    end
+
+    UI -->|HTTP / REST| API
+    API -->|check memory| SUPA_CHECK
+    SUPA_CHECK -->|YES — cache hit| CACHE_HIT
+    CACHE_HIT --> WRITER_FAST
+    WRITER_FAST --> SAVE
+    SUPA_CHECK -->|NO — full pipeline| SEARCH
+    SEARCH --> READER
+    READER --> WRITER
+    WRITER --> CRITIC
+    CRITIC --> REVISE
+    REVISE -->|YES — revise| WRITER
+    REVISE -->|NO — done| SAVE
+    SAVE --> RESULT
+    RESULT --> UI
+
+    SEARCH -.-> T
+    WRITER -.-> M
+    CRITIC -.-> M
+    READER -.-> B
+    SAVE -.-> S
+    SUPA_CHECK -.-> S
+
+    style PIPELINE fill:#e8f0fe,stroke:#4a6fa5,stroke-width:1.5px
+    style EXTERNAL fill:#f0f4f0,stroke:#5a7a5a,stroke-width:1.5px
+    style CACHE_HIT fill:#fff3cd,stroke:#e6a817
+    style WRITER_FAST fill:#ffd6a5,stroke:#e6813a
+    style SUPA_CHECK fill:#ffd6a5,stroke:#e6813a
+    style REVISE fill:#ffd6a5,stroke:#e6813a
+    style SAVE fill:#d4edda,stroke:#28a745
+    style RESULT fill:#d4edda,stroke:#28a745
+    style UI fill:#cfe2ff,stroke:#3d7ed6
+    style API fill:#cfe2ff,stroke:#3d7ed6
 ```
-User Input (topic)
-       │
-       ▼
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ Search Node │────▶│ Reader Node │────▶│ Writer Node │◀─────┐
-│  (Agent)    │     │  (Agent)    │     │  (Chain)    │      │
-└─────────────┘     └─────────────┘     └─────────────┘      │
-                                               │          revise
-                                               ▼              │
-                                        ┌─────────────┐       │
-                                        │ Critic Node │───────┘
-                                        │  (Chain)    │
-                                        └─────┬───────┘
-                                              │
-                              score ≥ target OR max revisions hit
-                                              │
-                                              ▼
-                                        ┌──────────┐
-                                        │ Supabase │  ← persist report + feedback
-                                        └──────────┘
-                                              │
-                                              ▼
-                                     React UI / Streamlit
-```
-
-### Agent Topology (LangGraph)
-
-| Step | Node | Type | Role |
-|------|------|------|------|
-| 1 | `search` | Tool-calling Agent | Queries Tavily for recent web results |
-| 2 | `reader` | Tool-calling Agent | Picks the best URL, scrapes its content |
-| 3 | `writer` | LLM Chain | Drafts (or revises) the research report |
-| 4 | `critic` | LLM Chain | Scores the report and produces structured feedback |
-| — | Router | Conditional Edge | Loops back to writer or exits to END |
-| — | Supabase | Persistence Layer | Stores topic, report, score, feedback per run |
 
 ---
 
-## 📁 Project Structure
+## Critic–Writer Feedback Loop
+
+```mermaid
+flowchart LR
+    DRAFT(["`**Writer**
+    drafts report
+    intro · findings
+    conclusion · sources`"])
+
+    CRITIC(["`**Critic**
+    scores 0–10
+    strengths · improvements
+    verdict`"])
+
+    GATE{"`score < 7
+    AND
+    revisions < 3?`"}
+
+    REVISE(["`**Inject Feedback**
+    revision_instruction
+    → Writer`"])
+
+    END(["`**Accept Report**
+    save to Supabase
+    return to UI`"])
+
+    DRAFT --> CRITIC
+    CRITIC --> GATE
+    GATE -->|YES| REVISE
+    REVISE -->|next revision| DRAFT
+    GATE -->|NO| END
+
+    style DRAFT fill:#cfe2ff,stroke:#3d7ed6
+    style CRITIC fill:#f8d7da,stroke:#c0392b
+    style GATE fill:#ffd6a5,stroke:#e6813a
+    style REVISE fill:#fff3cd,stroke:#e6a817
+    style END fill:#d4edda,stroke:#28a745
+```
+
+The Critic's full feedback — every "area to improve" — is injected into the Writer's prompt as `revision_instruction` on each cycle. This loops until the report earns a passing score (default **7/10**) or exhausts the revision budget (default **3 attempts**).
+
+---
+
+## File Structure
 
 ```
 multi-agent-research-agent/
-│
-│  ── Python Backend ──────────────────────────────────────────
-├── state.py          # ResearchState TypedDict — shared memory across all nodes
-├── tools.py          # LangChain @tools: web_search (Tavily) + scrape_url (BeautifulSoup)
-├── agents.py         # LLM agents (bind_tools + manual agentic loop), writer & critic chains
-├── graph.py          # LangGraph StateGraph: nodes, edges, conditional router, compiled graph
-├── pipeline.py       # CLI runner — invokes the graph and pretty-prints results
-├── app.py            # Streamlit UI — live node cards, score bar, report + feedback display
-│
-│  ── Persistence ─────────────────────────────────────────────
-├── memory.py         # Supabase client — save/load research runs from Postgres
-│
-│  ── React Frontend ──────────────────────────────────────────
-├── frontend/         # React app (Vite / CRA)
-│   ├── src/
-│   │   ├── components/   # NodeCard, ReportPanel, FeedbackPanel, ScoreBar
-│   │   ├── pages/        # Home, History, ReportDetail
-│   │   └── lib/          # Supabase client, API hooks
-│   └── package.json
-│
-├── requirements.txt  # Python dependencies (includes supabase>=2.4.0)
-└── .env              # API keys (not committed — see .env.example)
+├── state.py          # ResearchState TypedDict — shared blackboard for all LangGraph nodes
+├── tools.py          # web_search (Tavily) and scrape_url (BeautifulSoup) tools
+├── agents.py         # Search agent, Reader agent, Writer chain, Critic chain (Mistral)
+├── graph.py          # LangGraph state machine — nodes, edges, conditional routing
+├── pipeline.py       # CLI runner for testing the pipeline without a UI
+├── app.py            # FastAPI backend — receives topic, orchestrates pipeline, returns state
+├── requirements.txt  # Python dependencies
+└── .env              # API keys (see setup below)
 ```
 
-> **Note:** The React frontend and `memory.py` Supabase integration are under active development. The `supabase>=2.4.0` dependency is already declared in `requirements.txt`.
+### Key files explained
+
+| File | Role |
+|---|---|
+| `state.py` | Defines `ResearchState` — the shared `TypedDict` all nodes read from and write to. Holds topic, search results, scraped content, report, feedback, revision counters, and message history. |
+| `tools.py` | Two `@tool`-decorated functions: `web_search` hits Tavily (up to 5 results, 300-char snippets); `scrape_url` uses requests + BeautifulSoup to extract up to 3000 chars of clean page text. |
+| `agents.py` | Builds four AI actors using `ChatMistralAI (mistral-small-latest)`. The Search and Reader agents use a `bind_tools` agentic loop (up to 5 steps). The Writer and Critic are LangChain chains with structured prompts. |
+| `graph.py` | Wires the four nodes into a `StateGraph`. The `should_revise()` conditional edge routes back to the Writer if `score < threshold` and `revision_num < max_revisions`, otherwise ends. |
+| `pipeline.py` | Thin CLI wrapper — constructs the initial state and calls `research_graph.invoke()`. Useful for testing without a UI. |
+| `app.py` | FastAPI app — receives topic from the React frontend, runs the Supabase cache check, invokes the pipeline (or fast path), and returns the final state. |
 
 ---
 
-## 🗄️ Supabase Memory Layer
+## 🤖 Agent Roles
 
-Research runs are persisted to a Supabase Postgres table so you can browse, compare, and revisit past reports.
+### Search Agent
+Calls the Tavily API with the research topic and returns up to 5 results with titles, URLs, and short snippets.
 
-### Schema
+### Reader Agent
+Selects the most promising URLs from search results and uses BeautifulSoup to scrape up to 3000 characters of clean body text, stripping scripts, styles, navbars, and footers.
 
-```sql
-create table research_runs (
-  id          uuid primary key default gen_random_uuid(),
-  topic       text not null,
-  report      text,
-  feedback    text,
-  score       int,
-  revisions   int,
-  created_at  timestamptz default now()
-);
-```
+### Writer Chain
+Uses a structured prompt to produce a report with four sections: **Introduction**, **Key Findings**, **Conclusion**, and **Sources**. On revision runs, the full critic feedback is injected as a `revision_instruction` and the Writer is told which revision number it is.
 
-### Usage (Python)
-
-```python
-from memory import save_run, load_runs
-
-# After pipeline completes:
-save_run(topic, report, feedback, score, revisions)
-
-# Retrieve history:
-runs = load_runs(limit=10)
-```
+### Critic Chain
+Returns a structured critique containing a `Score: X/10`, a list of strengths, areas to improve, and a one-line verdict. The score is parsed with a multi-pattern regex to handle varied Mistral output formatting.
 
 ---
 
-## 🔄 Execution Flow
+## Supabase Memory Layer
 
-1. User enters a **topic**, sets **max revisions** (1–5) and **score target** (5–10)
-2. **Search Agent** runs a Tavily query — results stored as `search_results`
-3. **Reader Agent** picks the most relevant URL and scrapes it — stored as `scraped_content`
-4. **Writer Chain** combines both sources, generates a structured report — `revision_num` increments
-5. **Critic Chain** scores the report (0–10) with structured feedback (Strengths / Areas to Improve / Verdict)
-6. **Router** checks `critic_score` vs `score_threshold` and `revision_num` vs `max_revisions`:
-   - If score < threshold **and** revisions remain → loop back to Writer with feedback injected as `revision_instruction`
-   - Otherwise → END
-7. Final report + feedback + score are **saved to Supabase** for history
+Before any pipeline work begins, the system queries the `research_cache` table for a same or semantically related topic using fuzzy/embedding similarity.
+
+- **Cache hit** → load cached report and content, send directly to Writer for a rewrite and polish. Web search and scraping are skipped entirely.
+- **Cache miss** → run full pipeline. Once complete, save `topic + report + score + timestamp` to Supabase for future queries.
+
+This is the most impactful optimization in the system — web search + scraping is the slowest and most expensive step, so cache hits deliver polished reports in a fraction of the time.
+
+**Table schema (`research_cache`):**
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | uuid | Primary key |
+| `topic` | text | Research topic string |
+| `report` | text | Final report markdown |
+| `score` | int | Critic score (0–10) |
+| `timestamp` | timestamptz | When the research was saved |
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
 - Python 3.10+
-- Node.js 18+ (for the React frontend)
-- A [Mistral AI API key](https://console.mistral.ai/)
-- A [Tavily API key](https://app.tavily.com/)
-- A [Supabase project](https://supabase.com/) with the schema above applied
+- Node.js (for the React frontend)
+- A Supabase project with the `research_cache` table created
+- API keys for Tavily, Mistral, and Supabase
 
-### Installation
+### 1. Clone the repo
 
 ```bash
 git clone https://github.com/dramaaa98/multi-agent-research-agent.git
 cd multi-agent-research-agent
-
-# Python backend
-pip install -r requirements.txt
-
-# React frontend
-cd frontend
-npm install
 ```
 
-### Environment Variables
+### 2. Install Python dependencies
 
-Create `.env` in the project root (never commit this):
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configure environment variables
+
+Copy `.env` and fill in your keys:
 
 ```env
-MISTRAL_API_KEY=your_mistral_key_here
-TAVILY_API_KEY=your_tavily_key_here
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_supabase_anon_or_service_key
+TAVILY_API_KEY=your_tavily_key
+MISTRAL_API_KEY=your_mistral_key
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_KEY=your_supabase_anon_key
 ```
 
-### Run the Streamlit UI
+### 4. Run the backend
 
 ```bash
-streamlit run app.py
+uvicorn app:app --reload
 ```
 
-Open `http://localhost:8501`.
-
-### Run the React Frontend
-
-```bash
-cd frontend
-npm run dev
-```
-
-Open `http://localhost:5173`.
-
-### Run from the CLI
+### 5. Run the pipeline via CLI (optional, for testing)
 
 ```bash
 python pipeline.py
 ```
 
-### Run programmatically
+---
 
-```python
-from pipeline import run_research_pipeline
+## Tech Stack
 
-result = run_research_pipeline(
-    topic="Advances in fusion energy 2025",
-    max_revisions=3,
-    score_threshold=8,
-)
-print(result["report"])
-```
+| Layer | Technology |
+|---|---|
+| LLM | Mistral AI (`mistral-small-latest`) |
+| Agent framework | LangGraph + LangChain |
+| Web search | Tavily API |
+| Web scraping | requests + BeautifulSoup4 |
+| Memory / cache | Supabase (PostgreSQL) |
+| Backend | FastAPI |
+| Frontend | React |
 
 ---
 
-## 📦 Dependencies
+## Configuration
 
-### Python
-
-| Package | Purpose |
-|---------|---------|
-| `langgraph>=0.2.0` | State machine / graph orchestration |
-| `langchain-mistralai>=0.2.0` | Mistral LLM integration |
-| `langchain-core` / `langchain>=0.3.0` | Prompts, parsers, message types |
-| `tavily-python>=0.3.0` | Web search API |
-| `beautifulsoup4>=4.12.0` | HTML scraping & cleaning |
-| `requests>=2.31.0` | HTTP fetching |
-| `streamlit>=1.35.0` | Streamlit web UI |
-| `supabase>=2.4.0` | Supabase Postgres persistence |
-| `mistralai>=1.0.0` | Mistral native SDK |
-| `python-dotenv>=1.0.0` | `.env` loading |
-| `rich>=13.0.0` | CLI pretty-printing |
-
-### React Frontend
-
-| Package | Purpose |
-|---------|---------|
-| `react` / `vite` | UI framework and bundler |
-| `@supabase/supabase-js` | Supabase client for report history |
-| `tailwindcss` | Styling |
-
----
-
-## ⚙️ Configuration
+Key parameters that control pipeline behaviour (set in initial state or `.env`):
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
-| `max_revisions` | 3 | Maximum Writer → Critic loops before forced exit |
-| `score_threshold` | 7 | Minimum critic score (out of 10) to stop looping |
-| LLM model | `mistral-small-latest` | Change in `agents.py` |
-| Tavily `max_results` | 5 | Results per search query (`tools.py`) |
-| Scrape char limit | 3 000 | Max chars from a scraped page (`tools.py`) |
-| Search results to reader | 800 chars | Truncation in `graph.py` `reader_node` |
-
----
-
-## 🔍 Code Analysis & Design Notes
-
-### Strengths
-
-- **Clean separation of concerns** — state, tools, agents, graph wiring, UI, and persistence are all isolated files with clear single responsibilities.
-- **Version-compatible agent loop** — avoids `create_react_agent` in favour of a manual `_run_tool_agent()` loop (~20 lines) that works across LangGraph versions.
-- **Robust score parsing** — five regex patterns in `_parse_score()` handle all the formatting variations Mistral produces (`Score: 7/10`, `**Score: 7/10**`, `7 out of 10`, etc.), with a neutral fallback of 5 to prevent infinite loops.
-- **Streaming UI** — `research_graph.stream(stream_mode="updates")` renders live node progress without blocking Streamlit.
-- **Feedback injection** — the writer receives the critic's full text in `revision_instruction`, making revisions genuinely targeted rather than blind re-attempts.
-- **Persistent history via Supabase** — runs survive process restarts and can be browsed, compared, and recalled from the React frontend.
-
-### Potential Improvements
-
-- **`.env` committed to the public repo** — real API keys should never be in version control. Add `.env` to `.gitignore` and provide `.env.example` instead.
-- **Only one URL scraped** per run. Scraping 2–3 URLs in parallel would give the writer richer source material.
-- **`search_results[:800]`** passed to the reader is quite short; increasing to 1 500–2 000 chars would improve URL selection quality on verbose topics.
-- **No async execution** — search and scrape are sequential; wrapping them with `asyncio` would reduce latency.
-- **No error boundaries** around graph execution in `app.py` — an API failure mid-run surfaces as an unhandled Streamlit exception.
-- **Hardcoded model string** — surface `MISTRAL_MODEL` as an env variable or UI selector to make model comparison easier.
+|---|---|---|
+| `max_revisions` | `3` | Maximum Writer–Critic revision cycles |
+| `score_threshold` | `7` | Minimum critic score (out of 10) to accept a report |
+| `similarity_threshold` | configurable | Supabase similarity score above which a cache hit is declared |
 
 ---
