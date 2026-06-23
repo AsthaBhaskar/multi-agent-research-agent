@@ -240,7 +240,7 @@ SUPABASE_KEY=your_supabase_anon_key
 ### 4. Run the backend
 
 ```bash
-uvicorn app:app --reload
+python -m uvicorn backend:app --reload --port 8000
 ```
 
 ### 5. Run the pipeline via CLI (optional, for testing)
