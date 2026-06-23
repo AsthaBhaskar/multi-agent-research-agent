@@ -14,6 +14,7 @@ CORS is open to localhost:3000 (React dev server).
 """
 
 import json
+import os
 import asyncio
 from typing import AsyncGenerator
 
@@ -27,9 +28,17 @@ from sse_starlette.sse import EventSourceResponse
 
 app = FastAPI(title="ResearchMind API")
 
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "")
+origins = (
+    [o.strip() for o in ALLOWED_ORIGINS.split(",") if o.strip()]
+    if ALLOWED_ORIGINS
+    else ["*"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
 )

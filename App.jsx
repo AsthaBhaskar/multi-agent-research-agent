@@ -12,7 +12,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 const NODES = [
   { id: "search", label: "Search Agent",  desc: "Web search via Tavily",          icon: "⟳" },
