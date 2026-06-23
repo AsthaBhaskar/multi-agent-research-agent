@@ -23,7 +23,7 @@ flowchart TD
     UI(["`**Frontend**
     React UI`"])
     API(["`**FastAPI Backend**
-    backend.py`"])
+    app.py`"])
     SUPA_CHECK{"`**Supabase**
     Similarity Check`"}
     CACHE_HIT(["`**Load Cached Research**
@@ -63,7 +63,7 @@ flowchart TD
         S([Supabase DB])
     end
 
-    UI -->|HTTP / SSE| API
+    UI -->|HTTP / REST| API
     API -->|check memory| SUPA_CHECK
     SUPA_CHECK -->|YES — cache hit| CACHE_HIT
     CACHE_HIT --> WRITER_FAST
