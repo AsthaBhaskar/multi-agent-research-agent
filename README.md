@@ -1,6 +1,8 @@
 # Multi-Agent Research Agent
 
-A multi-agent AI research pipeline built on **LangGraph** that autonomously searches the web, scrapes sources, writes a structured report, and iteratively critiques and improves it — until it reaches a quality threshold. Features a **React frontend**, a **FastAPI backend**, and a **Supabase-powered memory layer** that short-circuits expensive web searches for previously researched topics.
+A multi-agent AI research pipeline built on **LangGraph** that autonomously searches the web, scrapes sources, writes a structured report, and iteratively critiques and improves it — until it reaches a quality threshold. Features a **React + Vite frontend**, a **FastAPI backend**, and a **Supabase-powered memory layer** that short-circuits expensive web searches for previously researched topics.
+
+**Live Demo:** [https://multi-agent-research-agent.vercel.app/](https://multi-agent-research-agent.vercel.app/)
 
 ---
 
@@ -21,7 +23,7 @@ flowchart TD
     UI(["`**Frontend**
     React UI`"])
     API(["`**FastAPI Backend**
-    app.py`"])
+    backend.py`"])
     SUPA_CHECK{"`**Supabase**
     Similarity Check`"}
     CACHE_HIT(["`**Load Cached Research**
@@ -61,7 +63,7 @@ flowchart TD
         S([Supabase DB])
     end
 
-    UI -->|HTTP / REST| API
+    UI -->|HTTP / SSE| API
     API -->|check memory| SUPA_CHECK
     SUPA_CHECK -->|YES — cache hit| CACHE_HIT
     CACHE_HIT --> WRITER_FAST
@@ -144,14 +146,21 @@ The Critic's full feedback — every "area to improve" — is injected into the 
 
 ```
 multi-agent-research-agent/
-├── state.py          # ResearchState TypedDict — shared blackboard for all LangGraph nodes
-├── tools.py          # web_search (Tavily) and scrape_url (BeautifulSoup) tools
-├── agents.py         # Search agent, Reader agent, Writer chain, Critic chain (Mistral)
-├── graph.py          # LangGraph state machine — nodes, edges, conditional routing
-├── pipeline.py       # CLI runner for testing the pipeline without a UI
-├── app.py            # FastAPI backend — receives topic, orchestrates pipeline, returns state
-├── requirements.txt  # Python dependencies
-└── .env              # API keys (see setup below)
+├── src/
+│   ├── App.jsx           # Main React component — UI, SSE streaming, state display
+│   └── main.jsx          # React entry point
+├── state.py              # ResearchState TypedDict — shared blackboard for all LangGraph nodes
+├── tools.py              # web_search (Tavily) and scrape_url (BeautifulSoup) tools
+├── agents.py             # Search agent, Reader agent, Writer chain, Critic chain (Mistral)
+├── graph.py              # LangGraph state machine — nodes, edges, conditional routing
+├── pipeline.py           # CLI runner for testing the pipeline without a UI
+├── backend.py            # FastAPI backend — receives topic, orchestrates pipeline, streams state
+├── index.html            # Vite HTML entry point
+├── vite.config.js        # Vite config — React plugin, dev server on port 3000
+├── package.json          # Node dependencies (React, Vite)
+├── requirements.txt      # Python dependencies
+├── render.yaml           # Render deployment config (backend)
+└── .env                  # API keys (see setup below — do not commit)
 ```
 
 ### Key files explained
@@ -163,11 +172,12 @@ multi-agent-research-agent/
 | `agents.py` | Builds four AI actors using `ChatMistralAI (mistral-small-latest)`. The Search and Reader agents use a `bind_tools` agentic loop (up to 5 steps). The Writer and Critic are LangChain chains with structured prompts. |
 | `graph.py` | Wires the four nodes into a `StateGraph`. The `should_revise()` conditional edge routes back to the Writer if `score < threshold` and `revision_num < max_revisions`, otherwise ends. |
 | `pipeline.py` | Thin CLI wrapper — constructs the initial state and calls `research_graph.invoke()`. Useful for testing without a UI. |
-| `app.py` | FastAPI app — receives topic from the React frontend, runs the Supabase cache check, invokes the pipeline (or fast path), and returns the final state. |
+| `backend.py` | FastAPI app — receives topic from the React frontend, runs the Supabase cache check, invokes the pipeline (or fast path), and streams state back via SSE. |
+| `src/App.jsx` | React frontend — connects to the backend SSE stream, renders live agent progress, scores, critic feedback, and the final report. |
 
 ---
 
-## 🤖 Agent Roles
+## Agent Roles
 
 ### Search Agent
 Calls the Tavily API with the research topic and returns up to 5 results with titles, URLs, and short snippets.
@@ -209,7 +219,7 @@ This is the most impactful optimization in the system — web search + scraping 
 ### Prerequisites
 
 - Python 3.10+
-- Node.js (for the React frontend)
+- Node.js 18+ (for the React frontend)
 - A Supabase project with the `research_cache` table created
 - API keys for Tavily, Mistral, and Supabase
 
@@ -226,9 +236,15 @@ cd multi-agent-research-agent
 pip install -r requirements.txt
 ```
 
-### 3. Configure environment variables
+### 3. Install frontend dependencies
 
-Copy `.env` and fill in your keys:
+```bash
+npm install
+```
+
+### 4. Configure environment variables
+
+Copy `env.example` to `.env` and fill in your keys:
 
 ```env
 TAVILY_API_KEY=your_tavily_key
@@ -237,17 +253,62 @@ SUPABASE_URL=your_supabase_project_url
 SUPABASE_KEY=your_supabase_anon_key
 ```
 
-### 4. Run the backend
+### 5. Run the backend
 
 ```bash
 python -m uvicorn backend:app --reload --port 8000
 ```
 
-### 5. Run the pipeline via CLI (optional, for testing)
+### 6. Run the frontend
+
+In a second terminal:
+
+```bash
+npm run dev
+```
+
+The frontend will be available at [http://localhost:3000](http://localhost:3000). It connects to the backend at `http://localhost:8000` by default.
+
+### 7. Run the pipeline via CLI (optional, for testing)
 
 ```bash
 python pipeline.py
 ```
+
+---
+
+## Deployment
+
+The app is split into two separately deployed services:
+
+| Service | Platform | URL |
+|---|---|---|
+| Frontend (React + Vite) | Vercel | [https://multi-agent-research-agent.vercel.app/](https://multi-agent-research-agent.vercel.app/) |
+| Backend (FastAPI) | Render | [https://multi-agent-research-agent.onrender.com](https://multi-agent-research-agent.onrender.com) |
+
+### Deploy backend to Render
+
+The repo includes a `render.yaml` config. Connect the repo to Render and it will auto-detect the config. Set the following environment variables in the Render dashboard:
+
+```
+TAVILY_API_KEY
+MISTRAL_API_KEY
+SUPABASE_URL
+SUPABASE_KEY
+```
+
+### Deploy frontend to Vercel
+
+1. Connect the repo to Vercel
+2. Set the following environment variable in the Vercel dashboard:
+
+```
+VITE_API_BASE_URL=https://multi-agent-research-agent.onrender.com
+```
+
+3. Vercel will auto-detect the Vite config and run `npm run build`
+
+> **Note:** Make sure `node_modules/` is in your `.gitignore` and not committed to the repo — Vercel installs its own dependencies during the build.
 
 ---
 
@@ -261,7 +322,9 @@ python pipeline.py
 | Web scraping | requests + BeautifulSoup4 |
 | Memory / cache | Supabase (PostgreSQL) |
 | Backend | FastAPI |
-| Frontend | React |
+| Frontend | React + Vite |
+| Backend hosting | Render |
+| Frontend hosting | Vercel |
 
 ---
 
