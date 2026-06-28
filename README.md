@@ -4,8 +4,13 @@ A multi-agent AI research pipeline built on **LangGraph** that autonomously sear
 
 **Live Demo:** [https://multi-agent-research-agent.vercel.app/](https://multi-agent-research-agent.vercel.app/)
 
-<img width="1920" height="1080" alt="Screenshot (652)" src="https://github.com/user-attachments/assets/26ef0b54-8ab1-40eb-9b72-f981e4307bad" />
+<img width="1920" height="876" alt="Screenshot (652)" src="https://github.com/user-attachments/assets/b602ac67-2a4f-4a14-a940-6f61168e18f3" />
 
+<img width="1920" height="891" alt="Screenshot (653)" src="https://github.com/user-attachments/assets/b25846af-6d0e-406e-b813-f7b125c7e0da" />
+
+<img width="1920" height="880" alt="Screenshot (654)" src="https://github.com/user-attachments/assets/53af9004-fc5f-4c9f-9f0b-3ae80a58a39f" />
+
+<img width="1920" height="887" alt="Screenshot (657)" src="https://github.com/user-attachments/assets/b3fbb438-2aa2-496a-bb47-dade6d6abee9" />
 
 ---
 
